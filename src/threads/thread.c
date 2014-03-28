@@ -376,11 +376,11 @@ thread_get_recent_cpu (void)
   return 0;
 }
 
-/* Compare sleep ticks of two threads */
+/* Compare wakeup ticks of two threads */
 bool
 thread_sleep_ticks_less(const struct list_elem *a,
                         const struct list_elem *b,
-                        void *aux)
+                        void *aux UNUSED)
 {
   struct thread *pta = list_entry (a, struct thread, elem);
   struct thread *ptb = list_entry (b, struct thread, elem);

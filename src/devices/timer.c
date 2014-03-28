@@ -99,7 +99,6 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
-  /* Disable interrupt */
   old_level = intr_disable ();
 
   /* Get current thread and set wakeup ticks. */
@@ -109,11 +108,8 @@ timer_sleep (int64_t ticks)
   /* Insert current thread to ordered sleeping list */
   list_insert_ordered (&sleeping_list, &cur_thread->elem,
                        thread_sleep_ticks_less, NULL);
-
-  /* Block current thread. */
   thread_block ();
 
-  /* Restore interrupt */
   intr_set_level (old_level);
 }
 
