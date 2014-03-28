@@ -141,7 +141,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-bool thread_sleep_ticks_less(const struct list_elem *a,
+bool thread_wakeup_ticks_less(const struct list_elem *a,
                              const struct list_elem *b,
                              void *aux);
 

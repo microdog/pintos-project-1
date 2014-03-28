@@ -378,7 +378,7 @@ thread_get_recent_cpu (void)
 
 /* Compare wakeup ticks of two threads */
 bool
-thread_sleep_ticks_less(const struct list_elem *a,
+thread_wakeup_ticks_less(const struct list_elem *a,
                         const struct list_elem *b,
                         void *aux UNUSED)
 {

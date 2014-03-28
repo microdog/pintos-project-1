@@ -107,7 +107,7 @@ timer_sleep (int64_t ticks)
 
   /* Insert current thread to ordered sleeping list */
   list_insert_ordered (&sleeping_list, &cur_thread->elem,
-                       thread_sleep_ticks_less, NULL);
+                       thread_wakeup_ticks_less, NULL);
   thread_block ();
 
   intr_set_level (old_level);
