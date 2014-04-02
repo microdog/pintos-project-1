@@ -189,6 +189,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   struct list_elem *pe;
   struct thread *pt;
+  bool preempt = false;
 
   ticks++;
   thread_tick ();
@@ -204,7 +205,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
         }
       list_remove (pe);
       thread_unblock (pt);
+      preempt = true;
     }
+  if (preempt)
+    intr_yield_on_return ();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
