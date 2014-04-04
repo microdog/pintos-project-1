@@ -194,6 +194,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
+  /* Actions for 4.4BSD scheduler. */
+  if (thread_mlfqs)
+    {
+      thread_mlfqs_incr_recent_cpu ();
+      if (ticks % TIMER_FREQ == 0)
+        thread_mlfqs_refresh ();
+      if (ticks % 4 == 0)
+        thread_mlfqs_update_priority (thread_current ());
+    }
+
   /* Check and wake up sleeping threads. */
   while (!list_empty(&sleeping_list))
     {
