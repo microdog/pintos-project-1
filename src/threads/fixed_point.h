@@ -5,7 +5,6 @@
 typedef int fixed_t;
 /* 14 LSB used for fractional part. */
 #define FP_SHIFT_AMOUNT (1 << 14)
-#define FP_SHIFT_MASK (FP_SHIFT_AMOUNT - 1)
 
 /* Some helpful macros. */
 /* Convert a value to fixed-point value. */
