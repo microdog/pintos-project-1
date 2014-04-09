@@ -99,6 +99,9 @@ timer_sleep (int64_t ticks)
 
   ASSERT (intr_get_level () == INTR_ON);
 
+  if (ticks <= 0)
+    return;
+
   old_level = intr_disable ();
 
   /* Get current thread and set wakeup ticks. */
