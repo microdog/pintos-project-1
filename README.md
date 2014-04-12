@@ -15,7 +15,7 @@ COURSE INFO
 
 Software Engineering Institute, East China Normal University
 
-Instructor: QIAN Weining (Professor, Ph.D.)
+Instructor: [QIAN Weining](http://faculty.ecnu.edu.cn/s/1047/main.jspy) (Professor, Ph.D.)
 
 Homepage: https://wnqian.wordpress.com/teaching/os2014/
 
