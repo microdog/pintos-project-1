@@ -460,9 +460,11 @@ thread_test_preemption (void)
 void
 thread_set_nice (int nice) 
 {
+  enum intr_level old_level = intr_disable ();
   thread_current ()->nice = nice;
   thread_mlfqs_update_priority (thread_current ());
   thread_test_preemption ();
+  intr_set_level (old_level);
 }
 
 /* Returns the current thread's nice value. */
