@@ -203,7 +203,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
       thread_mlfqs_incr_recent_cpu ();
       if (ticks % TIMER_FREQ == 0)
         thread_mlfqs_refresh ();
-      if (ticks % 4 == 0)
+      else if (ticks % 4 == 0)
         thread_mlfqs_update_priority (thread_current ());
     }
 
