@@ -231,7 +231,7 @@ lock_acquire (struct lock *lock)
       lock->max_priority = t->priority;
       thread_add_lock (lock);
     }
-    lock->holder = t;
+  lock->holder = t;
   intr_set_level (old_level);
 }
 
@@ -263,14 +263,20 @@ lock_try_acquire (struct lock *lock)
 void
 lock_release (struct lock *lock) 
 {
+  enum intr_level old_level;
+
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
+
+  old_level = intr_disable ();
 
   if (!thread_mlfqs)
     thread_remove_lock (lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+
+  intr_set_level (old_level);
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -344,8 +350,7 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_insert_ordered (&cond->waiters, &waiter.elem,
-                       cond_sema_priority_large, NULL);
+  list_push_back (&cond->waiters, &waiter.elem);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
@@ -399,10 +404,6 @@ cond_sema_priority_large (const struct list_elem *a,
   struct thread *tb;
   struct semaphore_elem *sa = list_entry (a, struct semaphore_elem, elem);
   struct semaphore_elem *sb = list_entry (b, struct semaphore_elem, elem);
-  if (list_empty (&sa->semaphore.waiters))
-    return false;
-  else if (list_empty (&sb->semaphore.waiters))
-    return true;
 
   ta = list_entry(list_front(&sa->semaphore.waiters),
                   struct thread, elem);
