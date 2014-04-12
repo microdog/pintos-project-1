@@ -29,6 +29,6 @@ typedef int fixed_t;
 #define FP_INT_PART(A) (A >> FP_SHIFT_AMOUNT)
 /* Get rounded integer of a fixed-point value. */
 #define FP_ROUND(A) (A >= 0 ? ((A + (1 << (FP_SHIFT_AMOUNT - 1))) >> FP_SHIFT_AMOUNT) \
-							: ((A - (1 << (FP_SHIFT_AMOUNT - 1))) >> FP_SHIFT_AMOUNT))
+                            : ((A - (1 << (FP_SHIFT_AMOUNT - 1))) >> FP_SHIFT_AMOUNT))
 
 #endif /* thread/fixed_point.h */
