@@ -104,6 +104,9 @@ shutdown_power_off (void)
   for (p = s; *p != '\0'; p++)
     outb (0x8900, *p);
 
+  /* Use ACPI shutdown for newer QEMU */
+  outw (0xB004, 0x0 | 0x2000);
+
   /* For newer versions of qemu, you must run with -device
    * isa-debug-exit, which exits on any write to an IO port (by
    * default 0x501).  Qemu's exit code is double the value plus one,

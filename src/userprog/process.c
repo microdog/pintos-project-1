@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -15,6 +16,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
@@ -38,6 +40,9 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  char *save_ptr;
+  file_name = strtok_r((char *) file_name, " ", &save_ptr);
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
@@ -60,6 +65,14 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
+
+  /* Update child process loading status. */
+  if (success)
+    thread_current ()->cp->load_status = CHILD_LOADED;
+  else
+    thread_current ()->cp->load_status = CHILD_LOAD_FAILED;
+      
+  sema_up (&thread_current ()->cp->load_sema);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -86,9 +99,19 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  struct child_process *cp = get_child_process (child_tid);
+  if (!cp)
+    return -1;
+  if (cp->waiting)
+    return -1;
+  cp->waiting = true;
+  if (!cp->exited)
+    sema_down (&cp->wait_sema);
+  int status = cp->status;
+  detach_child_process (cp);
+  return status;
 }
 
 /* Free the current process's resources. */
@@ -97,6 +120,29 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  struct list_elem *e;
+  struct child_process *cp;
+
+  /* Close all files opened by current process. */
+  lock_acquire (&fs_lock);
+  process_detach_file (-1);
+  if (cur->protect_file)
+    file_close (cur->protect_file);
+  lock_release (&fs_lock);
+
+  /* Detach all child processed. */
+  for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list); )
+    {
+      cp = list_entry (e, struct child_process, elem);
+      e = list_next (e);
+      detach_child_process (cp);
+    }
+
+  if (cur->cp)
+    {
+      cur->cp->exited = true;
+      sema_up (&cur->cp->wait_sema);
+    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -215,6 +261,10 @@ load (const char *file_name, void (**eip) (void), void **esp)
   bool success = false;
   int i;
 
+  /* Extract filename. */
+  char *save_ptr;
+  file_name = strtok_r ((char *) file_name, " ", &save_ptr);
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
@@ -222,12 +272,15 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  lock_acquire (&fs_lock);
   file = filesys_open (file_name);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
+  file_deny_write (file);
+  t->protect_file = file;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -305,6 +358,56 @@ load (const char *file_name, void (**eip) (void), void **esp)
   if (!setup_stack (esp))
     goto done;
 
+  int argc = 0, argv_size = 4;
+  size_t token_len;
+  char *token;
+  char **argv = malloc (argv_size * sizeof (char *));
+
+  /* Push the arguments on the stack. */
+  for (token = (char *) file_name; token != 0;
+       token = strtok_r (0, " ", &save_ptr))
+    {
+      token_len = strlen (token) + 1;
+      *esp -= token_len;
+      argv[argc++] = *esp;
+      if (argc >= argv_size)
+        {
+          if (argv_size >= 64)
+            break;
+          argv_size = argv_size << 1;
+          argv = realloc (argv, argv_size * sizeof (char *));
+        }
+      memcpy (*esp, token, token_len);
+    }
+  argv[argc] = 0;
+
+  /* Perform word-align. */
+  if ((i = (size_t) *esp % 4) != 0)
+    {
+      *esp -= i;
+      memset (*esp, 0, i);
+    }
+
+  /* Push argv. */
+  for (i = argc; i >= 0; --i)
+    {
+      *esp -= sizeof (char *);
+      memcpy (*esp, argv + i, sizeof (char *));
+    }
+  token = *esp;
+  *esp -= sizeof (char **);
+  memcpy (*esp, &token, sizeof (char **));
+
+  /* Push argc. */
+  *esp -= sizeof (int);
+  memcpy (*esp, &argc, sizeof (int));
+
+  /* Push return address. */
+  *esp -= sizeof (void *);
+  memset (*esp, 0, sizeof (void *));
+  
+  free(argv);
+
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
@@ -312,7 +415,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  lock_release (&fs_lock);
   return success;
 }
 
@@ -462,4 +565,90 @@ install_page (void *upage, void *kpage, bool writable)
      address, then map our page there. */
   return (pagedir_get_page (t->pagedir, upage) == NULL
           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+}
+
+struct child_process * attach_child_process (pid_t pid)
+{
+  struct child_process *cp = malloc (sizeof (struct child_process));
+  if (!cp)
+    return 0;
+  cp->pid = pid;
+  cp->load_status = CHILD_NOT_LOADED;
+  cp->waiting = false;
+  cp->exited = false;
+  sema_init (&cp->load_sema, 0);
+  sema_init (&cp->wait_sema, 0);
+  list_push_back (&thread_current ()->child_list, &cp->elem);
+  return cp;
+}
+
+struct child_process * get_child_process (pid_t pid)
+{
+  struct thread *cur = thread_current ();
+  struct list_elem *e;
+  struct child_process *cp;
+
+  for (e = list_begin (&cur->child_list); e != list_end (&cur->child_list);
+       e = list_next (e))
+    {
+      cp = list_entry (e, struct child_process, elem);
+      if (pid == cp->pid)
+        return cp;
+    }
+  return 0;
+}
+
+void detach_child_process (struct child_process *cp)
+{
+  list_remove (&cp->elem);
+  free (cp);
+}
+
+int process_attach_file (struct file *f)
+{
+  struct process_file *pf = malloc (sizeof (struct process_file));
+  if (!pf)
+    return -1;
+  pf->file = f;
+  pf->fd = thread_current ()->fd;
+  thread_current ()->fd++;
+  list_push_back (&thread_current ()->files_list, &pf->elem);
+  return pf->fd;
+}
+
+struct file * process_get_file (int fd)
+{
+  struct thread *t = thread_current ();
+  struct list_elem *e;
+  struct process_file *pf;
+
+  for (e = list_begin (&t->files_list); e != list_end (&t->files_list);
+       e = list_next (e))
+    {
+      pf = list_entry (e, struct process_file, elem);
+      if (fd == pf->fd)
+        return pf->file;
+    }
+  return 0;
+}
+
+void process_detach_file (int fd)
+{
+  struct thread *t = thread_current();
+  struct list_elem *e;
+  struct process_file *pf;
+
+  for (e = list_begin (&t->files_list); e != list_end (&t->files_list);)
+    {
+      pf = list_entry (e, struct process_file, elem);
+      e = list_next (e);
+      if (fd == pf->fd || fd == -1)
+        {
+          file_close (pf->file);
+          list_remove (&pf->elem);
+          free (pf);
+          if (fd != -1)
+            return;
+        }
+    }
 }
